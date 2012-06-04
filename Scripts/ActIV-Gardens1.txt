@@ -1,0 +1,643 @@
+/* Code borrowed from Baby Superman, Bobbyjayblack, fright01
+* Author: cwil083
+* Release 2.1
+* Changelog:
+* (28-5-12):   Release 1
+* (29-5-12):   Release 2, added code to deal with dialogs, added code to repair, fixed minor bugs
+* (29-5-12):   Release 2.1, added DialogMonitor class/thread, minor bug fixes and improvements, added UI monitoring function
+*/
+
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Reflection;
+using System.Runtime;
+using System.Runtime.InteropServices;
+using System.Linq;
+using System.Text;
+using System.IO;
+using System.Threading;
+
+using D3;
+
+
+namespace d3a4bot
+{
+    class Program
+    {
+        public class ObjectSort : IComparer
+        {
+            int IComparer.Compare(Object x, Object y)
+            {
+                Unit u1 = x as Unit;
+                Unit u2 = y as Unit;
+                return (int)((float)Math.Sqrt(Math.Pow(Me.X - u1.X, 2) + Math.Pow(Me.Y - u1.Y, 2)) - (float)Math.Sqrt(Math.Pow(Me.X - u2.X, 2) + Math.Pow(Me.Y - u2.Y, 2)));
+            }
+        }
+
+        public class Coord
+        {
+            public Coord(float x, float y)
+            {
+                X = x;
+                Y = y;
+            }
+            public float X;
+            public float Y;
+        }
+
+        public class DialogMonitor
+        {
+            private bool status = true;
+            private volatile bool stop = false;
+            public void HandleDialogs()
+            {
+                while (!stop)
+                {
+                    UIElement dialog = UIElement.Get().Where(u => u.Name.Contains("BattleNetModalNotifications_main.ModalNotification")).FirstOrDefault();
+                    if (dialog != default(UIElement) && dialog.Visible)
+                    {
+                        String dlgTitle;
+                        String dlgMessage;
+                        UIElement Title = UIElement.Get().Where(u => u.Name.Contains("BattleNetModalNotifications_main.ModalNotification.Content.List.Title")).FirstOrDefault();
+                        if (Title != default(UIElement) && Title.Visible) dlgTitle = Title.Text;
+                        else dlgTitle = "Unknown";
+                        UIElement Message = UIElement.Get().Where(u => u.Name.Contains("BattleNetModalNotifications_main.ModalNotification.Content.List.Message")).FirstOrDefault();
+                        if (Message != default(UIElement) && Message.Visible) dlgMessage = Message.Text;
+                        else dlgMessage = "Unknown";
+                        Messages.WriteLine(String.Format("Dialog encountered.\nTitle: {0}\nMessage:", dlgTitle, dlgMessage));
+                        UIElement Button = UIElement.Get().Where(u => u.Name.Contains("Root.TopLayer.BattleNetModalNotifications_main.ModalNotification.Buttons.ButtonList.OkButton")).FirstOrDefault();
+                        if (Button != default(UIElement) && Button.Visible)
+                        {
+                            Button.Click();
+                            status = true;
+                        }
+                        else
+                        {
+                            Messages.WriteLine("Could not handle!");
+                            status = false;
+                        }
+                    }
+                    status = true;
+                    Thread.Sleep(1000);
+                }
+            }
+            public bool Status
+            {
+                get { return this.status; }
+            }
+            public void Stop()
+            {
+                stop = true;
+            }
+        }
+
+
+        [DllImport("user32.dll")]
+        static extern IntPtr GetForegroundWindow();
+
+        private static IntPtr DiabloWindowHandle = IntPtr.Zero;
+
+        private static String status;
+        private static bool debug = false;
+        private static int frameCount = 0;
+        private static int Step = 0;
+        private static List<Action> Steps = new List<Action>();
+        private static List<Action> SubSteps = new List<Action>();
+        private static int SubStep = 0;
+
+        private static Queue<Coord> Areas = new Queue<Coord>();
+        private static Coord CurrentArea = default(Coord);
+        private static bool FirstCall = false;
+        private static int AreaCount = 0;
+        private static ArrayList units = new ArrayList();
+
+        private static bool StartClicked = false;
+
+        private static bool RepairNeeded = false;
+        private static bool RepairCheck = true;
+
+        private static Dictionary<long, bool> UIElementList = new Dictionary<long, bool>();
+        private static bool checkUI = false;
+        private static StreamWriter Messages = new StreamWriter("d3a4bot_messages.txt", true);
+
+        private static DialogMonitor dm = new DialogMonitor();
+        private static Thread dmThread = new Thread(dm.HandleDialogs);
+        static void Main(string[] args)
+        {
+            if (checkUI)
+            {
+                foreach (UIElement ui in UIElement.Get())
+                {
+                    if (ui.Visible) UIElementList[ui.Hash] = true;
+                    else UIElementList[ui.Hash] = false;
+                }
+            }
+
+            DiabloWindowHandle = Process.GetCurrentProcess().MainWindowHandle;
+
+            Game.OnTickEvent += new TickEventHandler(Game_OnTickEvent);
+            Game.OnGameEnterEvent += new GameEnterEventHandler(delegate(EventArgs e)
+            {
+                dmThread.Start();
+            });
+            Game.OnGameLeaveEvent += new GameLeaveEventHandler(delegate(EventArgs e)
+            {
+                dm.Stop();
+            });
+
+
+            Steps.Add(delegate()
+            {
+                
+                if (!Game.Ingame)
+                {
+                    status = "Starting game";
+                    if (StartClicked) return;
+                    Click("Root.NormalLayer.BattleNetCampaign_main.LayoutRoot.Menu.PlayGameButton");
+                    StartClicked = true;
+                    return;
+                }
+                Areas.Clear();
+                Areas.Enqueue(new Coord(1052.0f, 321.0f));
+                Areas.Enqueue(new Coord(1073.0f, 317.0f));
+                Areas.Enqueue(new Coord(1106.0f, 344.0f));
+                Areas.Enqueue(new Coord(1076.0f, 355.0f));
+                Areas.Enqueue(new Coord(1088.0f, 379.0f));
+                Areas.Enqueue(new Coord(1076.0f, 385.0f));
+                Areas.Enqueue(new Coord(932.0f, 302.0f));
+                Areas.Enqueue(new Coord(879.0f, 281.0f));
+                Areas.Enqueue(new Coord(860.0f, 286.0f));
+                Areas.Enqueue(new Coord(882.0f, 314.0f));
+                Areas.Enqueue(new Coord(868.0f, 339.0f));
+                Areas.Enqueue(new Coord(941.0f, 354.0f));
+                FirstCall = true;
+                StartClicked = false;
+                AreaCount = 0;
+                RepairCheck = true;
+                RepairNeeded = false;
+                if (Me.WorldId == 0x772F0001) Step = 8;
+                else Step++;
+            });
+
+            Steps.Add(delegate()
+            {
+                if (RepairCheck)
+                {
+                    var inventory = Unit.Get().Where(u => (int)u.ItemContainer >= 1 && (int)u.ItemContainer <= 13);
+                    foreach (Unit unit in inventory)
+                    {
+                        if (unit.GetAttributeInteger(UnitAttribute.Durability_Cur) <= 0)
+                        {
+                            RepairNeeded = true;
+                        }
+                    }
+                }
+                if (RepairNeeded)
+                {
+                    status = "Repairing";
+                    if (!MoveTo(443.0f, 320.0f)) return;
+                }
+                Step++;
+            });
+
+            Steps.Add(delegate()
+            {
+                if(RepairNeeded)
+                {
+                    Interact("Vidar");
+                }
+                Step++;// = 100;
+            });
+
+            Steps.Add(delegate()
+            {
+                if (RepairNeeded)
+                {
+                    UIElement element = UIElement.Get().Where(u => u.Name.Contains("shop_dialog_mainPage")).FirstOrDefault();
+                    if (element == default(UIElement)) return;
+                    UIElement.Get().Where(u => u.Name.Contains("repair_dialog.RepairAll")).First().Click();
+                }
+                Step++;
+            });
+
+            Steps.Add(delegate()
+            {
+                if (RepairNeeded) if (!MoveTo(395.0f, 399.0f)) return;
+                Step++;
+            });
+
+            Steps.Add(delegate()
+            {
+                if (!Game.Ingame) Step = 0;
+                status = "Moving to Waypoint";
+                if (MoveTo("Waypoint")) Step++;
+            });
+
+            Steps.Add(delegate()
+            {
+                if (GetDistance("Waypoint") > 2) return;
+                Interact("Waypoint");
+                status = "Interacting with Waypoint";
+                Step++;
+            });
+
+            Steps.Add(delegate()
+            {
+                UIElement element = UIElement.Get().Where(u => u.Name.Contains("stackpanel.entry 3.wrapper.button")).FirstOrDefault();
+                if (element != default(UIElement))
+                {
+                    element.Click();
+                    status = "Teleporting";
+                }
+                else
+                {
+                    status = "Unable to Teleport";
+                    Step = 0;
+                    return;
+                }
+                if (Me.WorldId != 0x772F0001) return;
+                Step++;
+            });
+
+            Steps.Add(delegate()
+            {
+                Unit FortuneShrine = Unit.Get().Where(u => u.Name.Contains("Fortune")).FirstOrDefault();
+                if (FortuneShrine != default(Unit))
+                {
+                    Interact(FortuneShrine);
+                    status = "Using Fortune Shrine";
+                    if (GetDistance(FortuneShrine) > 10.0f) return;
+                }
+                Step++;
+            });
+
+            Steps.Add(delegate()
+            {
+                if (FirstCall)
+                {
+                    CurrentArea = Areas.Dequeue();
+                    AreaCount++;
+                    FirstCall = false;
+                }
+                SearchArea();
+            });
+
+            Steps.Add(delegate()
+            {
+                if (!MoveTo(940.0f, 368.0f)) return;
+                Step++;
+            });
+
+            Steps.Add(delegate()
+            {
+                if (AutoLoot()) return;
+                Me.UsePower(SNOPowerId.UseStoneOfRecall);
+                ExitGame();
+                status = "Starting new game";
+                Thread.Sleep(1000);
+            });
+
+
+            SubSteps.Add(delegate()
+            {
+                status = String.Format("Moving to area {0}", AreaCount);
+                if(!MoveTo(CurrentArea.X, CurrentArea.Y)) return;
+                PopulateUnitArray();
+                SubStep++;
+            });
+            SubSteps.Add(delegate()
+            {
+                status = String.Format("Looting area {0}", AreaCount);
+                if (units.Count > 0)
+                {
+                    Unit unit = units[0] as Unit;
+                    if (unit.Valid)
+                    {
+                        if ((int)unit.AnimationId == 210354 || (int)unit.AnimationId == 182306 || (int)unit.AnimationId == 140603) //checking for Weapon Racks, Chests, Angris Archives
+                        {
+                            Interact(unit);
+                        }
+                        else Me.UsePower(SNOPowerId.Witchdoctor_PoisonDart, unit);
+                    }
+                }
+                PopulateUnitArray();
+                if (units.Count <= 0)
+                {
+                    if (Areas.Count > 0)
+                    {
+                        CurrentArea = Areas.Dequeue();
+                        AreaCount++;
+                    }
+                    else
+                    {
+                        Step++;
+                    }
+                    SubStep = 0;
+                }
+            });
+
+
+        }
+
+        static void Game_OnTickEvent(EventArgs e)
+        {
+            Draw.DrawText(10.0f, 32.0f, 0x16A, 0x16, 0xFFFFFFFF, String.Format("Status: {0}", status));
+            Draw.DrawText(10.0f, 76.0f, 0x16A, 0x16, 0xFFFFFFFF, String.Format("WorldId: {0:X}", Me.WorldId));
+            if (DiabloWindowHandle != GetForegroundWindow())
+            {
+                Draw.DrawText(10.0f, 54.0f, 0x16A, 0x16, 0xFFFFFFFF, "Foreground: false");
+                if (++frameCount % 5 != 0) return;
+            }
+            else
+            {
+                Draw.DrawText(10.0f, 54.0f, 0x16A, 0x16, 0xFFFFFFFF, "Foreground: true");
+                if (++frameCount % 15 != 0) return;
+            }
+            if (AutoLoot()) return;
+            if (Step < Steps.Count) Steps[Step].Invoke();
+            if (Me.Life < Me.MaxLife)
+            {
+                ExitGame();
+                Step = 0;
+            }
+            if (!Game.Ingame)
+            {
+                Step = 0;
+                return;
+            }
+            if (checkUI) CheckUI();
+            if (dm.Status == false)
+            {
+                Step = 0;
+            }
+        }
+
+        static void CheckUI()
+        {
+            foreach (UIElement ui in UIElement.Get().Where(u => u.Visible && !UIElementList.ContainsKey(u.Hash)))
+            {
+                if (!UIElementList.ContainsKey(ui.Hash))
+                {
+                    Messages.WriteLine("CheckUI: " + ui.Name);
+                    UIElementList[ui.Hash] = true;
+                }
+            }
+            Messages.Close();
+        }
+
+        static void SearchArea()
+        {
+            if (SubStep < SubSteps.Count) SubSteps[SubStep].Invoke();
+        }
+
+        static void PopulateUnitArray()
+        {
+            units.Clear();
+            int nObjs = Unit.Get().Where(u => u.Type == UnitType.Gizmo).Count();
+            ArrayList buffer = new ArrayList();
+            for (int i = 0; i < nObjs; i++)
+            {
+                buffer.Add(Unit.Get().Where(u => u.Type == UnitType.Gizmo).ElementAt(i));
+            }
+            foreach (Unit buf in buffer)
+            {
+                if (!(
+                    buf.Name.Contains("Waypoint") ||
+                    buf.Name.Contains("!!Missing!!") ||
+                    buf.Name.Contains("Library of Fate") ||
+                    buf.Name.Contains("Shrine") ||
+                    buf.Name.Contains("Well") ||
+                    (int)buf.AnimationId == 210355 ||  //Weapon Rack
+                    (int)buf.AnimationId == 210356 ||  //Weapon Rack
+                    (int)buf.AnimationId == 182307 ||  //Chest
+                    (int)buf.AnimationId == 182308 ||  //Chest
+                    (int)buf.AnimationId == 201666 ||  //Impaled Angel
+                    (int)buf.AnimationId == 204216 ||  //Impaled Angel
+                    (int)buf.AnimationId == 140604 ||  //Angiris Archive
+                    (int)buf.AnimationId == 195051 ||  //Vile Lesion
+                    (int)buf.AnimationId == 210401              //Vile Lesion
+                    ))
+                {
+                    if (GetDistance(buf) < 40.0f && buf.Valid) units.Add(buf);
+                }
+            }
+            units.Sort(new ObjectSort());
+        }
+
+
+        static bool AutoLoot()
+        {
+            var items = Unit.Get().Where(x => x.Type == UnitType.Item && x.ItemContainer == Container.Unknown && CheckItem(x) == true);
+            foreach (Unit u in items)
+            {
+                if (GetDistance(u) <= 4.5f)
+                {
+                    Me.UsePower(SNOPowerId.Axe_Operate_Gizmo, u);
+                }
+                else if (GetDistance(u) <= 8.5f)
+                {
+                    Me.UsePower(SNOPowerId.Axe_Operate_Gizmo, u);
+                }
+                else
+                {
+                    Me.UsePower(SNOPowerId.Axe_Operate_Gizmo, u);
+                }
+            }
+            if (items.Count() > 0) return true;
+            else return false;
+        }
+
+        public static bool CheckItem(Unit unit)
+        {
+            SNOActorId[] s = {
+            // Tome Of Secrets
+            SNOActorId.Lore_Book_Flippy,
+            // Pages
+            SNOActorId.Page_of_Knowledge_flippy,
+            // Tomes
+            SNOActorId.BlacksmithsTome,
+            SNOActorId.Crafting_Training_Tome,
+
+            // Crafting Materials
+            SNOActorId.CraftingMaterials_Flippy_Global,
+
+            // Plans
+            SNOActorId.CraftingPlan_Smith_Drop,
+            SNOActorId.CraftingPlan_Jeweler_Drop,
+
+            // Gold Coins
+            SNOActorId.GoldCoins,
+            SNOActorId.GoldSmall,   
+            SNOActorId.GoldMedium,   
+            SNOActorId.GoldLarge,
+            SNOActorId.GoldCoin_flippy,
+            
+            // Health Potions
+            SNOActorId.healthPotion_Runic,
+            SNOActorId.healthPotion_Mythic,   
+            SNOActorId.healthPotion_Resplendent,
+            SNOActorId.healthPotion_Heroic,
+            SNOActorId.healthPotion_Super,
+            SNOActorId.healthPotion_Normal,
+            SNOActorId.healthPotion_Minor,
+            SNOActorId.healthPotion_Lesser,
+            SNOActorId.healthPotion_Greater,
+            SNOActorId.HealthPotionLarge,
+
+            // Gems
+            SNOActorId.Topaz_14,
+            SNOActorId.Topaz_13,
+            SNOActorId.Topaz_12,
+            SNOActorId.Topaz_11,
+            SNOActorId.Topaz_10,
+            SNOActorId.Topaz_09,
+            SNOActorId.Topaz_08,
+            SNOActorId.Topaz_07,
+            SNOActorId.Topaz_06,
+            SNOActorId.Topaz_05,
+            SNOActorId.Topaz_04,
+            SNOActorId.Topaz_03,
+            SNOActorId.Topaz_02,
+            SNOActorId.Topaz_01,
+            SNOActorId.Emerald_14,
+            SNOActorId.Emerald_13,
+            SNOActorId.Emerald_12,
+            SNOActorId.Emerald_11,
+            SNOActorId.Emerald_10,
+            SNOActorId.Emerald_09,
+            SNOActorId.Emerald_08,
+            SNOActorId.Emerald_07,
+            SNOActorId.Emerald_06,
+            SNOActorId.Emerald_05,
+            SNOActorId.Emerald_04,
+            SNOActorId.Emerald_03,
+            SNOActorId.Emerald_02,
+            SNOActorId.Emerald_01,
+            SNOActorId.Amethyst_14,
+            SNOActorId.Amethyst_13,
+            SNOActorId.Amethyst_12,
+            SNOActorId.Amethyst_11,
+            SNOActorId.Amethyst_10,
+            SNOActorId.Amethyst_09,
+            SNOActorId.Amethyst_08,
+            SNOActorId.Amethyst_07,
+            SNOActorId.Amethyst_06,
+            SNOActorId.Amethyst_05,
+            SNOActorId.Amethyst_04,
+            SNOActorId.Amethyst_03,
+            SNOActorId.Amethyst_02,
+            SNOActorId.Amethyst_01,
+            SNOActorId.Ruby_14,
+            SNOActorId.Ruby_13,
+            SNOActorId.Ruby_12,
+            SNOActorId.Ruby_11,
+            SNOActorId.Ruby_10,
+            SNOActorId.Ruby_09,
+            SNOActorId.Ruby_08,
+            SNOActorId.Ruby_07,
+            SNOActorId.Ruby_06,
+            SNOActorId.Ruby_05,
+            SNOActorId.Ruby_04,
+            SNOActorId.Ruby_03,
+            SNOActorId.Ruby_02,
+            SNOActorId.Ruby_01};
+            foreach (SNOActorId sno in s)
+            {
+                if (unit.ActorId == sno)
+                    return true;
+            }
+            return unit.ItemQuality != UnitItemQuality.Normal &&
+                   unit.ItemQuality != UnitItemQuality.Superior &&
+                   unit.ItemQuality != UnitItemQuality.Inferior &&
+                   unit.ItemQuality != UnitItemQuality.Invalid;
+        }
+
+
+        public static void Interact(string name)
+        {
+            var u = Unit.Get().Where(x => x.Name.Contains(name)).FirstOrDefault();
+            if (u.Name.Contains(name))
+            {
+                if (debug)
+                    Game.Print("Interacting with " + u.Name);
+                Me.UsePower(u.Type == UnitType.Gizmo || u.Type == UnitType.Item ? SNOPowerId.Axe_Operate_Gizmo : SNOPowerId.Axe_Operate_NPC, u);
+            }
+        }
+
+        public static void Interact(Unit u)
+        {
+            if (debug)
+                Game.Print("Interacting with " + u.Name);
+            Me.UsePower(u.Type == UnitType.Gizmo || u.Type == UnitType.Item ? SNOPowerId.Axe_Operate_Gizmo : SNOPowerId.Axe_Operate_NPC, u);
+        }
+
+        public static bool MoveTo(float x, float y)
+        {
+            if (debug)
+                Game.Print("Moving to " + x + ", " + y);
+            Me.UsePower(SNOPowerId.Walk, x, y, Me.Z);
+            if ((float)Math.Sqrt(Math.Pow(Me.X - x, 2) + Math.Pow(Me.Y - y, 2)) < 4.0f)
+                return true;
+            return false;
+        }
+
+        public static bool MoveTo(string name)
+        {
+            var u = Unit.Get().Where(x => x.Name.Contains(name)).FirstOrDefault();
+            if (!u.Name.Contains(name))
+                return false;
+            if (debug)
+                Game.Print("Moving to " + name);
+            Me.UsePower(SNOPowerId.Walk, u);
+            if ((float)Math.Sqrt(Math.Pow(Me.X - u.X, 2) + Math.Pow(Me.Y - u.Y, 2)) < 4.0f)
+                return true;
+            return false;
+        }
+
+        public static bool MoveTo(Unit u)
+        {
+            if (debug)
+                Game.Print("Moving to " + u.Name);
+            Me.UsePower(SNOPowerId.Walk, u);
+            if ((float)Math.Sqrt(Math.Pow(Me.X - u.X, 2) + Math.Pow(Me.Y - u.Y, 2)) < 4.0f)
+                return true;
+            return false;
+        }
+
+        public static float GetDistance(string name)
+        {
+            var u = Unit.Get().Where(x => x.Name.Contains(name)).FirstOrDefault();
+            return (float)Math.Sqrt(Math.Pow(Me.X - u.X, 2) + Math.Pow(Me.Y - u.Y, 2));
+        }
+
+        public static float GetDistance(Unit unit)
+        {
+            return (float)Math.Sqrt(Math.Pow(Me.X - unit.X, 2) + Math.Pow(Me.Y - unit.Y, 2));
+        }
+
+        public static void ExitGame()
+        {
+            UIElement ui = UIElement.Get(0x5DB09161C4D6B4C6);
+            if (ui != null)
+            {
+                ui.Click();
+                Step = 0;
+            }
+        }
+
+        public static bool Click(string name)
+        {
+            var ui = UIElement.Get().Where(x => x.Name == name).FirstOrDefault();
+            if (ui.Name != null && ui.Visible && ui.Name == name)
+            {
+                if (debug)
+                    Game.Print("Clicking " + ui.Name.ToString());
+                ui.Click();
+                return true;
+            }
+            return false;
+        }
+    }
+}
