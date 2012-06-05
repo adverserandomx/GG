@@ -31,18 +31,18 @@ namespace Grind.Bots
 
             try
             {
-                if (BotHelper.needsRepair())
-                {
-                    //repairAndSell();
-                }
-                else 
-                {
+                //if (BotHelper.needsRepair())
+                //{
+                   //repairAndSell();
+                //}
+                //else 
+                //{
                     //walk(3810, 3706, true);              
                     BotHelper.walk(3815, 3781, true);
                     //BotHelper.killAll(40);
                     BotHelper.walk(3810, 3706, true);
                     Thread.Sleep(500);
-                }
+                //}
             }
             catch (Exception e)
             {

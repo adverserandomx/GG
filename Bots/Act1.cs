@@ -1,4 +1,10 @@
-﻿using System;
+﻿/*
+ * Make sure you start your character in Act 1 Quest3, Northwest Gate
+ * go to the gate west of Old Ruins waypoint and make sure you get the checkpoint
+ */ 
+#define DEBUG
+
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -34,21 +40,15 @@ namespace Grind.Bots
                 return;
             }
 
-            // check if you are not in the area and exit. S ometimes is buggy and I don't want to deal.
+            #region dummycheck
             //if ((uint)Me.LevelArea != 0x163FD || Me.X > 1992 || Me.X < 1991 || Me.Y < 2653 || Me.Y > 2654)
             //{
-            //    if (Game.Ingame)
-            //    {
-            //        ExitGame();
-            //        while (Game.Ingame) Thread.Sleep(583);
-            //    }
-            //    startGame();
-            //    while (!Game.Ingame) Thread.Sleep(612);
-            //    if ((uint)Me.LevelArea != 0x163FD)
-            //    {
-            //        Thread.Sleep(3000);
-            //    }
+            //    Game.Print("You must be in Act1, Quest3, Northwest Gate.  You also must have checkpointed from the gate.");
+            //    Game.Print("Please unload and reload when you have properly setup your character.");
+            //    Thread.Sleep(10000);
+            //    BotHelper.ExitGame();
             //}
+            #endregion //todo:
 
             /* Find Cellar */
             //make sure we are in game otherwise don't do any of the stuff below

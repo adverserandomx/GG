@@ -1,4 +1,6 @@
-﻿using System;
+﻿#define DEBUG
+
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -22,12 +24,11 @@ public static class Logger
         {
             _dirPath = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) + "\\Logs";
             _name = Assembly.GetExecutingAssembly().GetName().Name;
+             _filePath += _dirPath + "\\" + _name + ".txt";
 
-            //String format = "dd-MM-yy";
-            _filePath += _dirPath + "\\" + _name + ".txt";
-
+            #if DEBUG
             Game.Print("File Path = " + _filePath);
-
+            #endif
 
             try
             {
@@ -66,10 +67,10 @@ public static class Logger
             sb.AppendFormat("[{0}] {1}: {2}{3}", DateTime.Now.ToShortTimeString(), _name, message, System.Environment.NewLine);
             try
             {
-
                 File.AppendAllText(_filePath, sb.ToString());
-                //Console.Write(sb.ToString());
-
+            #if DEBUG
+                Game.Print(sb.ToString());
+            #endif
             }
             catch (Exception e)
             {

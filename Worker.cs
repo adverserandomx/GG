@@ -40,13 +40,14 @@ namespace Grind {
 
         private bool exceptionError = false;
 
-        private bool signal = false;
+        private bool deathSignal = false;
         private AutoResetEvent resetEvent;
 
         public Worker() {
-            this.thread = new Thread(this.ExecutingThread);
+            this.thread = new Thread(this.DoWork);
             resetEvent = new AutoResetEvent(true);
-            //Game.OnTickEvent += new TickEventHandler(Game_OnTickEvent); dangerous to use since we are threading our own model
+
+
             Game.OnDrawEvent += new DrawEventHandler(Game_OnDrawEvent);
             Game.OnTickEvent += new TickEventHandler(Game_OnTickEvent);
             Game.OnGameLeaveEvent += new GameLeaveEventHandler(Game_OnGameLeaveEvent);
@@ -56,7 +57,7 @@ namespace Grind {
         void Game_OnTickEvent(EventArgs e)
         {
             //using signal to handle race conditions
-            if (signal == false && Game.Ingame)
+            if (deathSignal == false && Game.Ingame)
             {
                 if (Me.WorldId !=0 && Me.Life == 0) //Me.WorldId makes sure you are in an actual game world...
                 {
@@ -67,7 +68,7 @@ namespace Grind {
                         resetEvent.Reset();
                         // hard reset
                         //Worker.Instance.Restart(); //horrible thread abort
-                        signal = true; //make sure OnTickEvent doesn't call this twice.
+                        deathSignal = true; //make sure OnTickEvent doesn't call this twice.
                     }
                     catch
                     {
@@ -90,7 +91,7 @@ namespace Grind {
         }
         void Game_OnGameEnterEvent(EventArgs e)
         {
-            signal = false; //reset signal for handling actions in OnTickEvent
+            deathSignal = false; //reset signal for handling actions in OnTickEvent
             resetEvent.Set(); //thread should continue
             BotHelper.signal = false; //reset signal for end game
         }
@@ -104,7 +105,7 @@ namespace Grind {
         }
 
         /// <summary>
-        /// TODO:
+        /// TODO: This method is for recoverign from fatal exceptions.  Not used anywhere now.
         /// </summary>
         private void HandleExceptionError()
         {
@@ -151,9 +152,9 @@ namespace Grind {
         //    }
         //}
 
-        private void ExecutingThread() 
+        private void DoWork() 
         {
-            Thread.Sleep(500);
+            //Thread.Sleep(500);
             
             //bot = new Act1GoldSarkoth();
             bot = new Act3XPSkycrown();
@@ -190,8 +191,7 @@ namespace Grind {
                 }
                 catch (Exception e)
                 {
-                    Game.Print("Exception: " + e.ToString());
-                    Logger.Log(e); //logging sometimes throws exceptions. Until I have time to deal with this...
+                    Logger.Log(e, "Exception: "); 
                     ExitReason = "Exception Exit";
                     BotHelper.ExitGame();
                     exceptionError = true;
